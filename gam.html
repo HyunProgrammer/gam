@@ -1,0 +1,671 @@
+<title>감 깎기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap">
+
+<style>
+/* ── Design tokens ─────────────────────────────────── */
+:root {
+  --bg:       #1C0E06;
+  --table:    #2E1608;
+  --plank:    rgba(255,255,255,0.025);
+  --fg:       #F2D9B0;
+  --fg-dim:   #9A7A55;
+  --accent:   #E05E10;
+  --gold:     #F5A020;
+  --gold-hi:  #FFD060;
+  --success:  #4D8A2C;
+  --bar-bg:   rgba(255,255,255,0.08);
+  --btn-bg:   #C04A0A;
+  --btn-hover:#E05E10;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  background: var(--bg);
+  background-image:
+    repeating-linear-gradient(90deg, var(--plank) 0px, var(--plank) 1px, transparent 1px, transparent 60px),
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 20px);
+  color: var(--fg);
+  font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-block: 32px;
+  padding-left:  max(16px, env(safe-area-inset-left,  0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  min-height: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+/* ── Header ───────────────────────────────────────── */
+.header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.header h1 {
+  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  font-weight: 900;
+  color: var(--gold);
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-shadow: 0 2px 12px rgba(229,94,16,0.4);
+}
+.header p {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--fg-dim);
+}
+
+/* ── Canvas area ──────────────────────────────────── */
+.stage {
+  position: relative;
+  cursor: none;
+  /* shadow gives the persimmon weight */
+  filter: drop-shadow(0 12px 28px rgba(0,0,0,0.7)) drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+}
+#c-flesh, #c-skin {
+  position: absolute;
+  top: 0; left: 0;
+  display: block;
+}
+#c-flesh { z-index: 1; }
+#c-skin  { z-index: 2; }
+
+/* ── Custom knife cursor ──────────────────────────── */
+.knife-cursor {
+  position: fixed;
+  pointer-events: none;
+  z-index: 200;
+  font-size: 30px;
+  transform: translate(-6px, -28px) rotate(-30deg);
+  transition: transform 0.08s ease;
+  filter: drop-shadow(1px 2px 3px rgba(0,0,0,0.5));
+  will-change: left, top;
+}
+.knife-cursor.cutting {
+  transform: translate(-4px, -24px) rotate(-15deg) scale(1.1);
+}
+
+/* ── Progress ─────────────────────────────────────── */
+.progress-wrap {
+  margin-top: 24px;
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.progress-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.progress-label { font-size: 0.78rem; color: var(--fg-dim); letter-spacing: 0.04em; }
+.progress-pct {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px rgba(245,160,32,0.4);
+}
+.track {
+  height: 6px;
+  background: var(--bar-bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--gold), var(--gold-hi));
+  transition: width 0.25s ease;
+  box-shadow: 0 0 6px rgba(245,160,32,0.5);
+}
+.status-msg {
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+  text-align: center;
+  min-height: 1.3em;
+  transition: color 0.3s;
+}
+.status-msg.good { color: var(--gold); }
+
+/* ── Completion overlay ───────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,4,1,0.88);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+  padding-left:  max(16px, env(safe-area-inset-left,  0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.overlay.show { opacity: 1; pointer-events: all; }
+
+.big-emoji {
+  font-size: 5rem;
+  line-height: 1;
+  animation: bounce 0.6s ease-in-out infinite alternate;
+}
+@keyframes bounce {
+  from { transform: translateY(0) rotate(-5deg); }
+  to   { transform: translateY(-14px) rotate(5deg); }
+}
+
+.overlay h2 {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: var(--gold);
+  text-shadow: 0 0 20px rgba(245,160,32,0.6);
+  letter-spacing: -0.02em;
+}
+.overlay p {
+  font-size: 0.95rem;
+  color: var(--fg-dim);
+  text-align: center;
+  line-height: 1.7;
+  max-width: 260px;
+}
+.score-chip {
+  background: rgba(245,160,32,0.12);
+  border: 1px solid rgba(245,160,32,0.3);
+  color: var(--gold);
+  padding: 6px 20px;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.btn-restart {
+  margin-top: 6px;
+  padding: 13px 36px;
+  background: var(--btn-bg);
+  color: var(--fg);
+  border: none;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  transition: background 0.2s, transform 0.1s;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.btn-restart:hover { background: var(--btn-hover); }
+.btn-restart:active { transform: scale(0.96); }
+
+/* ── Particle canvas ──────────────────────────────── */
+#c-part {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .big-emoji, * { animation: none !important; transition: none !important; }
+}
+</style>
+
+<!-- Particles layer -->
+<canvas id="c-part"></canvas>
+
+<!-- Knife cursor -->
+<div class="knife-cursor" id="knife">🔪</div>
+
+<!-- Header -->
+<div class="header">
+  <h1>🍊 감 깎기</h1>
+  <p>마우스를 누른 채 드래그해서 껍질을 벗겨보세요</p>
+</div>
+
+<!-- Game stage: two layered canvases -->
+<div class="stage" id="stage">
+  <canvas id="c-flesh"></canvas>
+  <canvas id="c-skin"></canvas>
+</div>
+
+<!-- Progress -->
+<div class="progress-wrap">
+  <div class="progress-row">
+    <span class="progress-label">깎은 정도</span>
+    <span class="progress-pct" id="pct">0%</span>
+  </div>
+  <div class="track"><div class="fill" id="fill"></div></div>
+  <p class="status-msg" id="msg">칼을 대고 밀어보세요! 🔪</p>
+</div>
+
+<!-- Completion overlay -->
+<div class="overlay" id="overlay">
+  <div class="big-emoji" id="ov-emoji">🍊</div>
+  <h2>완성!</h2>
+  <div class="score-chip" id="ov-score">95% 깎음</div>
+  <p id="ov-msg">달콤한 감을 맛볼 시간이에요!<br>수고했어요 😋</p>
+  <button class="btn-restart" id="btn-restart">🔪 다시 깎기</button>
+</div>
+
+<script>
+(function () {
+  /* ── Sizing ─────────────────────────────────────── */
+  const SZ  = Math.min(260, window.innerWidth - 48);
+  const R   = SZ / 2;
+
+  const stage    = document.getElementById('stage');
+  stage.style.cssText = `width:${SZ}px;height:${SZ}px;`;
+
+  const cf = document.getElementById('c-flesh');
+  const cs = document.getElementById('c-skin');
+  const cp = document.getElementById('c-part');
+  [cf, cs].forEach(c => { c.width = c.height = SZ; });
+  cp.width  = window.innerWidth;
+  cp.height = window.innerHeight;
+
+  const fctx = cf.getContext('2d');
+  const sctx = cs.getContext('2d');
+  const pctx = cp.getContext('2d');
+
+  /* ── Persimmon path (slightly squished) ──────────── */
+  function persimmonPath(ctx) {
+    ctx.beginPath();
+    ctx.ellipse(R, R + 6, R - 2, R - 8, 0, 0, Math.PI * 2);
+  }
+
+  /* ── Draw flesh (bottom) ─────────────────────────── */
+  function drawFlesh() {
+    fctx.clearRect(0, 0, SZ, SZ);
+    fctx.save();
+    persimmonPath(fctx);
+    fctx.clip();
+
+    // Base radial gradient
+    const g = fctx.createRadialGradient(R - 28, R - 28, 8, R, R + 6, R);
+    g.addColorStop(0,   '#FFE080');
+    g.addColorStop(0.35,'#F5A025');
+    g.addColorStop(0.7, '#E07818');
+    g.addColorStop(1,   '#B84E08');
+    fctx.fillStyle = g;
+    fctx.fillRect(0, 0, SZ, SZ);
+
+    // Specular highlight
+    const hi = fctx.createRadialGradient(R - 44, R - 44, 0, R - 30, R - 30, 52);
+    hi.addColorStop(0, 'rgba(255,255,200,0.45)');
+    hi.addColorStop(1, 'rgba(255,255,200,0)');
+    fctx.fillStyle = hi;
+    fctx.fillRect(0, 0, SZ, SZ);
+
+    // Radial flesh lines (세포 결)
+    fctx.strokeStyle = 'rgba(160,80,5,0.2)';
+    fctx.lineWidth = 0.7;
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      fctx.beginPath();
+      fctx.moveTo(R + Math.cos(a) * 6, R + 6 + Math.sin(a) * 6);
+      fctx.lineTo(R + Math.cos(a) * (R - 4), R + 6 + Math.sin(a) * (R - 6));
+      fctx.stroke();
+    }
+
+    fctx.restore();
+  }
+
+  /* ── Draw skin (top) ─────────────────────────────── */
+  function drawSkin() {
+    sctx.clearRect(0, 0, SZ, SZ);
+    sctx.save();
+    persimmonPath(sctx);
+    sctx.clip();
+
+    // Skin base
+    const g = sctx.createRadialGradient(R - 18, R - 18, 4, R, R + 6, R + 14);
+    g.addColorStop(0,   '#E86828');
+    g.addColorStop(0.45,'#CC5518');
+    g.addColorStop(0.8, '#A83A08');
+    g.addColorStop(1,   '#882800');
+    sctx.fillStyle = g;
+    sctx.fillRect(0, 0, SZ, SZ);
+
+    // Skin texture — tiny pores
+    sctx.fillStyle = 'rgba(0,0,0,0.12)';
+    for (let i = 0; i < 280; i++) {
+      const tx = Math.random() * SZ;
+      const ty = Math.random() * SZ;
+      const dx = tx - R, dy = ty - (R + 6);
+      if (dx*dx/(R-2)/(R-2) + dy*dy/(R-8)/(R-8) < 0.92) {
+        sctx.beginPath();
+        sctx.arc(tx, ty, Math.random() * 1.4 + 0.3, 0, Math.PI * 2);
+        sctx.fill();
+      }
+    }
+
+    // Subtle sheen
+    const sh = sctx.createRadialGradient(R - 52, R - 52, 0, R - 32, R - 32, 72);
+    sh.addColorStop(0, 'rgba(255,210,110,0.28)');
+    sh.addColorStop(1, 'rgba(255,210,110,0)');
+    sctx.fillStyle = sh;
+    sctx.fillRect(0, 0, SZ, SZ);
+
+    sctx.restore();
+
+    // Calyx (꼭지 + 잎)
+    drawCalyx();
+  }
+
+  function drawCalyx() {
+    const cx = R, cy = 9;
+
+    // 4 sepals
+    for (let i = 0; i < 4; i++) {
+      sctx.save();
+      sctx.translate(cx, cy);
+      sctx.rotate((i / 4) * Math.PI * 2 + Math.PI / 8);
+      sctx.beginPath();
+      sctx.ellipse(0, -13, 4.5, 13, 0, 0, Math.PI * 2);
+      sctx.fillStyle = '#3A6E20';
+      sctx.fill();
+      sctx.strokeStyle = '#285010';
+      sctx.lineWidth = 0.6;
+      sctx.stroke();
+      sctx.restore();
+    }
+
+    // Centre nub
+    sctx.beginPath();
+    sctx.arc(cx, cy, 5.5, 0, Math.PI * 2);
+    sctx.fillStyle = '#4A3010';
+    sctx.fill();
+
+    // Stem
+    sctx.beginPath();
+    sctx.moveTo(cx, cy - 4);
+    sctx.lineTo(cx + 2, cy - 20);
+    sctx.strokeStyle = '#5C3A15';
+    sctx.lineWidth = 3;
+    sctx.lineCap = 'round';
+    sctx.stroke();
+  }
+
+  /* ── Peel stroke ─────────────────────────────────── */
+  function eraseCalyx() {
+    sctx.save();
+    sctx.globalCompositeOperation = 'destination-out';
+    // Erase the whole calyx area (stem + leaves) without persimmon clipping
+    const gr = sctx.createRadialGradient(R, 9, 0, R, 9, 38);
+    gr.addColorStop(0,   'rgba(0,0,0,1)');
+    gr.addColorStop(0.75,'rgba(0,0,0,1)');
+    gr.addColorStop(1,   'rgba(0,0,0,0)');
+    sctx.beginPath();
+    sctx.arc(R, 9, 38, 0, Math.PI * 2);
+    sctx.fillStyle = gr;
+    sctx.fill();
+    sctx.restore();
+  }
+
+  function peel(x, y, px, py) {
+    // Clip to persimmon boundary
+    sctx.save();
+    persimmonPath(sctx);
+    sctx.clip();
+    sctx.globalCompositeOperation = 'destination-out';
+
+    const dist  = Math.hypot(x - px, y - py);
+    const steps = Math.max(1, Math.ceil(dist / 2));
+
+    for (let i = 0; i <= steps; i++) {
+      const t  = i / steps;
+      const bx = px + (x - px) * t;
+      const by = py + (y - py) * t;
+
+      // Main brush
+      const gr = sctx.createRadialGradient(bx, by, 0, bx, by, 20);
+      gr.addColorStop(0,   'rgba(0,0,0,1)');
+      gr.addColorStop(0.55,'rgba(0,0,0,0.92)');
+      gr.addColorStop(1,   'rgba(0,0,0,0)');
+      sctx.beginPath();
+      sctx.arc(bx, by, 20, 0, Math.PI * 2);
+      sctx.fillStyle = gr;
+      sctx.fill();
+    }
+
+    sctx.restore();
+  }
+
+  /* ── Progress sampling ───────────────────────────── */
+  function calcPct() {
+    const d = sctx.getImageData(0, 0, SZ, SZ).data;
+    let total = 0, erased = 0;
+    const step = 4;
+    for (let y = 0; y < SZ; y += step) {
+      for (let x = 0; x < SZ; x += step) {
+        const dx = x - R, dy = y - (R + 6);
+        if (dx*dx/(R-2)/(R-2) + dy*dy/(R-8)/(R-8) < 0.9) {
+          total++;
+          if (d[(y * SZ + x) * 4 + 3] < 40) erased++;
+        }
+      }
+    }
+    return total ? erased / total : 0;
+  }
+
+  /* ── State ───────────────────────────────────────── */
+  let drawing  = false;
+  let lx = 0, ly = 0;
+  let done     = false;
+  let ticker   = 0;
+  let bestPct  = 0;
+  let calyxGone = false;
+
+  const pctEl  = document.getElementById('pct');
+  const fillEl = document.getElementById('fill');
+  const msgEl  = document.getElementById('msg');
+  const knife  = document.getElementById('knife');
+  const overlay= document.getElementById('overlay');
+
+  /* ── Knife cursor ────────────────────────────────── */
+  document.addEventListener('mousemove', e => {
+    knife.style.left = e.clientX + 'px';
+    knife.style.top  = e.clientY + 'px';
+  });
+
+  function inPersimmon(x, y) {
+    const dx = x - R, dy = y - (R + 6);
+    return dx*dx/(R-2)/(R-2) + dy*dy/(R-8)/(R-8) < 1;
+  }
+
+  function canvasXY(e) {
+    const r   = cs.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return {
+      x: (src.clientX - r.left)  * (SZ / r.width),
+      y: (src.clientY - r.top)   * (SZ / r.height),
+    };
+  }
+
+  function onStart(e) {
+    e.preventDefault();
+    if (done) return;
+    drawing = true;
+    knife.classList.add('cutting');
+    const p = canvasXY(e);
+    lx = p.x; ly = p.y;
+    if (inPersimmon(p.x, p.y)) peel(p.x, p.y, p.x, p.y);
+  }
+
+  function onMove(e) {
+    e.preventDefault();
+    const src = e.touches ? e.touches[0] : e;
+    knife.style.left = src.clientX + 'px';
+    knife.style.top  = src.clientY + 'px';
+
+    if (!drawing || done) return;
+    const p = canvasXY(e);
+    if (inPersimmon(p.x, p.y) || inPersimmon(lx, ly)) {
+      peel(p.x, p.y, lx, ly);
+    }
+    // Calyx flies off when brushed at the top
+    if (!calyxGone && Math.hypot(p.x - R, p.y - 9) < 42) {
+      calyxGone = true;
+      eraseCalyx();
+    }
+    lx = p.x; ly = p.y;
+
+    ticker++;
+    if (ticker % 8 === 0) updateProgress();
+  }
+
+  function onEnd() {
+    drawing = false;
+    knife.classList.remove('cutting');
+  }
+
+  cs.addEventListener('mousedown',  onStart);
+  cs.addEventListener('mousemove',  onMove);
+  cs.addEventListener('mouseup',    onEnd);
+  cs.addEventListener('mouseleave', onEnd);
+  cs.addEventListener('touchstart', onStart, { passive: false });
+  cs.addEventListener('touchmove',  onMove,  { passive: false });
+  cs.addEventListener('touchend',   onEnd);
+
+  /* ── Progress update ─────────────────────────────── */
+  const messages = [
+    [0,   '칼을 대고 밀어보세요! 🔪'],
+    [15,  '좋아요! 계속 밀어봐요~'],
+    [35,  '잘 되고 있어요! 반 왔어요!'],
+    [55,  '거의 다 됐어요! 조금만 더! 💪'],
+    [75,  '마지막 조각이에요! 화이팅!'],
+    [90,  '완성 직전! 끝까지 깎아봐요! 💥'],
+  ];
+
+  function updateProgress() {
+    const ratio = calcPct();
+    const pct   = Math.min(100, Math.round(ratio * 100));
+    if (pct > bestPct) bestPct = pct;
+
+    pctEl.textContent      = pct + '%';
+    fillEl.style.width     = pct + '%';
+
+    const msg = messages.reduce((acc, [t, m]) => pct >= t ? m : acc, messages[0][1]);
+    msgEl.textContent = msg;
+    msgEl.className   = 'status-msg' + (pct >= 55 ? ' good' : '');
+    if (pct >= 98) msgEl.textContent = '거의 다 됐어요! 끝까지 깎아봐요!';
+
+    if (pct >= 98 && !done) {
+      const final = calcPct();
+      if (final >= 0.98) showCompletion(Math.round(final * 100));
+    }
+  }
+
+  /* ── Completion ──────────────────────────────────── */
+  const msgs = [
+    '달콤한 감을 맛볼 시간이에요!<br>수고 많으셨어요 😋',
+    '완벽해요! 껍질 하나 남기지 않고<br>깔끔하게 깎았군요! 🏆',
+    '감 깎기의 달인이 탄생했어요! ✨',
+  ];
+
+  function showCompletion(pct) {
+    done = true;
+    msgEl.textContent = '🎉 완성! 맛있겠다!';
+    msgEl.className   = 'status-msg good';
+    pctEl.textContent = pct + '%';
+    fillEl.style.width = '100%';
+
+    spawnConfetti();
+    setTimeout(() => {
+      document.getElementById('ov-score').textContent = pct + '% 깎음';
+      document.getElementById('ov-msg').innerHTML =
+        msgs[Math.floor(Math.random() * msgs.length)];
+      overlay.classList.add('show');
+    }, 900);
+  }
+
+  document.getElementById('btn-restart').addEventListener('click', () => {
+    done = false; ticker = 0; bestPct = 0; calyxGone = false;
+    pctEl.textContent  = '0%';
+    fillEl.style.width = '0%';
+    msgEl.textContent  = '칼을 대고 밀어보세요! 🔪';
+    msgEl.className    = 'status-msg';
+    overlay.classList.remove('show');
+    particles.length = 0;
+    pctx.clearRect(0, 0, cp.width, cp.height);
+    drawSkin();
+  });
+
+  /* ── Confetti ────────────────────────────────────── */
+  let particles = [];
+
+  function spawnConfetti() {
+    const cols = ['#F5A020','#FFD060','#E05E10','#FFC040','#FF8C00',
+                  '#FFEC8B','#FF6020','#FFF0A0','#FF9030'];
+    const cx = cp.width / 2, cy = cp.height * 0.45;
+    for (let i = 0; i < 80; i++) {
+      const angle  = Math.random() * Math.PI * 2;
+      const speed  = Math.random() * 11 + 3;
+      particles.push({
+        x: cx + (Math.random() - 0.5) * 60,
+        y: cy + (Math.random() - 0.5) * 40,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 4,
+        r: Math.random() * 7 + 3,
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 0.2,
+        shape: Math.random() < 0.5 ? 'circle' : 'rect',
+        color: cols[Math.floor(Math.random() * cols.length)],
+        life: 1,
+        decay: Math.random() * 0.016 + 0.009,
+      });
+    }
+    requestAnimationFrame(tickConfetti);
+  }
+
+  function tickConfetti() {
+    pctx.clearRect(0, 0, cp.width, cp.height);
+    particles = particles.filter(p => p.life > 0);
+    for (const p of particles) {
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.28;
+      p.vx *= 0.99;
+      p.rot += p.vrot;
+      p.life -= p.decay;
+      pctx.save();
+      pctx.globalAlpha = Math.max(0, p.life);
+      pctx.translate(p.x, p.y);
+      pctx.rotate(p.rot);
+      pctx.fillStyle = p.color;
+      if (p.shape === 'circle') {
+        pctx.beginPath();
+        pctx.arc(0, 0, p.r, 0, Math.PI * 2);
+        pctx.fill();
+      } else {
+        pctx.fillRect(-p.r, -p.r * 0.5, p.r * 2, p.r);
+      }
+      pctx.restore();
+    }
+    pctx.globalAlpha = 1;
+    if (particles.length > 0) requestAnimationFrame(tickConfetti);
+  }
+
+  /* ── Init ────────────────────────────────────────── */
+  drawFlesh();
+  drawSkin();
+
+  window.addEventListener('resize', () => {
+    cp.width  = window.innerWidth;
+    cp.height = window.innerHeight;
+  });
+})();
+</script>
